@@ -1,0 +1,1 @@
+# starknet-coin-flip-contract
