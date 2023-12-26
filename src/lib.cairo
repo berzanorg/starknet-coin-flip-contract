@@ -1,10 +1,13 @@
 #[starknet::contract]
 mod MyNFT {
+    use core::traits::Into;
     use openzeppelin::token::erc721::interface::IERC721;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::ERC721Component::Errors;
     use starknet::ContractAddress;
+    use starknet::get_execution_info;
+
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -28,17 +31,20 @@ mod MyNFT {
     impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
 
+
     // SRC5
     #[abi(embed_v0)]
     impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     #[storage]
     struct Storage {
+        supply: u256,
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage
     }
+
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -49,10 +55,12 @@ mod MyNFT {
         SRC5Event: SRC5Component::Event
     }
 
+
     #[constructor]
     fn constructor(ref self: ContractState, recipient: ContractAddress) {
         let name = 'Coin Flip';
         let symbol = 'FLIP';
+        self.supply.write(0);
         self.erc721.initializer(name, symbol);
     }
 
@@ -64,10 +72,18 @@ mod MyNFT {
         fn token_uri(self: @TState, token_id: u256) -> Array<felt252>;
     }
 
+
     #[starknet::interface]
     trait IERC721MetadataFeltArrayCamelOnly<TState> {
         fn tokenURI(self: @TState, tokenId: u256) -> Array<felt252>;
     }
+
+
+    #[starknet::interface]
+    trait CoinFlip<TState> {
+        fn flip(ref self: TState);
+    }
+
 
     #[external(v0)]
     impl ERC721MetadataImpl of IERC721MetadataFeltArray<ContractState> {
@@ -91,6 +107,15 @@ mod MyNFT {
             self._token_uri(tokenId)
         }
     }
+
+
+    #[external(v0)]
+    impl CoinFlipImpl of CoinFlip<ContractState> {
+        fn flip(ref self: ContractState) {
+            self._flip();
+        }
+    }
+
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
@@ -119,6 +144,23 @@ mod MyNFT {
             content.append('ue\":\"Very Lucky\"}]}');
 
             content
+        }
+
+        fn _flip(ref self: ContractState) {
+            let execution_info = get_execution_info().unbox();
+            let caller = execution_info.caller_address;
+            let block_info = execution_info.block_info.unbox();
+            let block_number = block_info.block_number;
+            let timestamp = block_info.block_timestamp;
+            let sum = timestamp + block_number;
+
+            let is_even: bool = sum % 2 == 0;
+
+            if is_even {
+                let token_id = self.supply.read();
+                self.erc721._mint(caller, 3);
+                self.supply.write(token_id + 1);
+            }
         }
     }
 }
